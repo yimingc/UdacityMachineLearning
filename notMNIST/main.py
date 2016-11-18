@@ -166,33 +166,32 @@ def randomize(dataset, labels):
     return shuffled_dataset, shuffled_lables    
 
 if __name__ == '__main__':
-    print('Download data')
+    print('Problem 0: Download data')
     train_filename = maybe_download('notMNIST_large.tar.gz', 247336696)
     test_filename = maybe_download('notMNIST_small.tar.gz', 8458043)
     
-    print('Extract data')
+    print('Problem 0: Extract data')
     num_classes = 10
     train_folders = maybe_extract(train_filename)
     test_folders = maybe_extract(test_filename)
     
-    # display a sample
-    #image = Image.open("notMNIST_small/A/Q0NXaWxkV29yZHMtQm9sZEl0YWxpYy50dGY=.png")
-    #image.show()
+    print('Problem 1: Display a sample')
     image = Image.open("notMNIST_small/A/Q0NXaWxkV29yZHMtQm9sZEl0YWxpYy50dGY=.png")
     plt.figure()
     plt.imshow(image)
-    plt.show()
+    #plt.show()
     
-    # normalize image
+    print('Problem 1: Normalize image')
     # global image_size, pixel_depth
-    image_size = 28  # Pixel width and height.
+    image_size = 28      # Pixel width and height.
     pixel_depth = 255.0  # Number of levels per pixel.
+    print('Image width %d, height %d, pixel levels %f' %(image_size, image_size, pixel_depth))
     
-    # pickle data
+    print('Problem 1: Maybe pickle data')
     train_datasets = maybe_pickle(train_folders, 45000)
     test_datasets = maybe_pickle(test_folders, 1800)
     
-    # display pickle data
+    print('Problem 2: Display pickle data')
     pickle_file = train_datasets[0]
     with open(pickle_file) as f:
         letter_set = pickle.load(f)
@@ -200,9 +199,11 @@ if __name__ == '__main__':
         sample_image = letter_set[sample_idx, :, :]
         plt.figure()
         plt.imshow(sample_image)
-        plt.show()
+        #plt.show()
     
-    # Check the balance of data
+    
+    
+    print('Problem 3: Merge and prune the data')
     train_size = 200000
     valid_size = 10000
     test_size = 10000
@@ -215,20 +216,66 @@ if __name__ == '__main__':
     print('Validation:', valid_dataset.shape, valid_labels.shape)
     print('Testing:', test_dataset.shape, test_labels.shape)
     
-    # Randomize the data
+    print('Randomize the data')
     train_dataset, train_labels = randomize(train_dataset, train_labels)
     valid_dataset, valid_labels = randomize(valid_dataset, valid_labels)
     test_dataset, test_labels = randomize(test_dataset, test_labels)
     
-    # Ensure the data is still good after shuffling
+    print('Problem 4: Ensure the data is still good after shuffling')
     idx = np.random.randint(train_size)
     print('Label: ', str(train_labels[idx]))
     plt.figure()
     plt.imshow( train_dataset[idx] )
     plt.show()
+    plt.title('Problem 4: Ensure the data is still good after shuffling')
     
-    # Finally, pickle the dat
+    print('Problem 3: Check the balance of data')
+    plt.hist(train_labels)
+    plt.title('Problem 3: Check the balance of data')
+    
+    print('Finally, pickle the data')
     pickle_file = 'notMNIST.pickle'
+    try:
+        f = open(pickle_file, 'wb')
+        save = {'train_dataset': train_dataset,
+                'train_labels': train_labels,
+                'valid_dataset': valid_dataset,
+                'valid_labels': valid_labels,
+                'test_dataset': test_dataset,
+                'test_labels': test_labels
+            }
+        pickle.dump(save, f, pickle.HIGHEST_PROTOCOL)
+        f.close()
+    except Exception as e:
+        print('Unable to save data to', pickle_file, ':', e)
+        raise
+    statinfo = os.stat(pickle_file)
+    print('Compressed pickle size:', statinfo.st_size)
+    
+    print('One more check of the pickled data')
+    with open(pickle_file) as f:
+        pickled_data = pickle.load(f)
+    idx = np.random.randint(train_size)
+    print('Label: ', str(pickled_data['train_labels'][idx]))
+    plt.figure()
+    plt.imshow( pickled_data['train_dataset'][idx] )
+    #plt.show()
+        
+    print('Problem5: Let\'s check overlaps between train and valid data!')
+    for i, train_data in enumerate(train_dataset):
+        for j, valid_data in enumerate(valid_dataset):
+            #fig = plt.figure()
+            #plt.imshow( np.concatenate((train_data, valid_data), axis=1) )
+            #plt.show()
+            err = np.sum(np.fabs(train_data - valid_data))
+            print(str(err))
+            #if abs(err) < 1.0 :
+            #    fig = plt.figure()
+            #    plt.imshow( np.concatenate((train_data, valid_data), axis=1) )
+            #    #plt.show()
+            #    fig.savefig('match_%d_%d_%f.png' %(i, j, err) )
+    
+    print()
         
 
 

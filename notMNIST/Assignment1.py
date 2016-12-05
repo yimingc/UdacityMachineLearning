@@ -3,15 +3,17 @@
 # These are all the modules we'll be using later. Make sure you can import them
 # before proceeding further.
 from __future__ import print_function
+import hashlib
 import matplotlib.pyplot as plt
 import numpy as np
 import os
-import sys
-import tarfile
 from PIL import Image
+import sys
 from scipy import ndimage
-from six.moves.urllib.request import urlretrieve
 from six.moves import cPickle as pickle
+from six.moves.urllib.request import urlretrieve
+from sklearn import linear_model
+import tarfile
 
 url = 'http://commondatastorage.googleapis.com/books1000/'
 last_percent_reported = None
@@ -45,7 +47,7 @@ def maybe_download(filename, expected_bytes, force=False):
         raise Exception('Failed to verify ' + filename + '. Can you get to it with a browser?')
     return filename
 
-def maybe_extract(filename, force=False):
+def maybe_extract(filename, num_classes, force=False):
     root = os.path.splitext(os.path.splitext(filename)[0])[0]  # remove .tar.gz
     if os.path.isdir(root) and not force:
         # You may override by setting force=True.
@@ -165,15 +167,29 @@ def randomize(dataset, labels):
     shuffled_lables = labels[permutation]
     return shuffled_dataset, shuffled_lables    
 
-if __name__ == '__main__':
+def checkOverlap(setA, setB, cleanB = True):
+    A_hashes = [hashlib.sha1(x).digest() for x in setA]
+    B_hashes = [hashlib.sha1(x).digest() for x in setB]
+    if cleanB:
+        idx_overlap  = np.in1d(B_hashes,  A_hashes)
+        idx_keep = ~idx_overlap
+        set_clean = setB[idx_keep]
+    else: # clean A
+        idx_overlap  = np.in1d(A_hashes,  B_hashes)
+        idx_keep = ~idx_overlap
+        set_clean = setA[idx_keep]
+    print("overlap: %d samples" % idx_overlap.sum())
+    return set_clean, idx_keep
+    
+def Assignment1():
     print('Problem 0: Download data')
     train_filename = maybe_download('notMNIST_large.tar.gz', 247336696)
     test_filename = maybe_download('notMNIST_small.tar.gz', 8458043)
     
     print('Problem 0: Extract data')
     num_classes = 10
-    train_folders = maybe_extract(train_filename)
-    test_folders = maybe_extract(test_filename)
+    train_folders = maybe_extract(train_filename, num_classes)
+    test_folders = maybe_extract(test_filename, num_classes)
     
     print('Problem 1: Display a sample')
     image = Image.open("notMNIST_small/A/Q0NXaWxkV29yZHMtQm9sZEl0YWxpYy50dGY=.png")
@@ -182,7 +198,7 @@ if __name__ == '__main__':
     #plt.show()
     
     print('Problem 1: Normalize image')
-    # global image_size, pixel_depth
+    global image_size, pixel_depth
     image_size = 28      # Pixel width and height.
     pixel_depth = 255.0  # Number of levels per pixel.
     print('Image width %d, height %d, pixel levels %f' %(image_size, image_size, pixel_depth))
@@ -195,12 +211,12 @@ if __name__ == '__main__':
     pickle_file = train_datasets[0]
     with open(pickle_file) as f:
         letter_set = pickle.load(f)
+        f.close()
         sample_idx = np.random.randint(len(letter_set))
         sample_image = letter_set[sample_idx, :, :]
         plt.figure()
         plt.imshow(sample_image)
         #plt.show()
-    
     
     
     print('Problem 3: Merge and prune the data')
@@ -226,12 +242,13 @@ if __name__ == '__main__':
     print('Label: ', str(train_labels[idx]))
     plt.figure()
     plt.imshow( train_dataset[idx] )
-    plt.show()
     plt.title('Problem 4: Ensure the data is still good after shuffling')
+    plt.show()
     
     print('Problem 3: Check the balance of data')
     plt.hist(train_labels)
     plt.title('Problem 3: Check the balance of data')
+    plt.show()
     
     print('Finally, pickle the data')
     pickle_file = 'notMNIST.pickle'
@@ -255,27 +272,46 @@ if __name__ == '__main__':
     print('One more check of the pickled data')
     with open(pickle_file) as f:
         pickled_data = pickle.load(f)
-    idx = np.random.randint(train_size)
-    print('Label: ', str(pickled_data['train_labels'][idx]))
-    plt.figure()
-    plt.imshow( pickled_data['train_dataset'][idx] )
-    #plt.show()
+        f.close()
+        idx = np.random.randint(train_size)
+        print('Label: ', str(pickled_data['train_labels'][idx]))
+        plt.figure()
+        plt.imshow( pickled_data['train_dataset'][idx] )
+        #plt.show()
         
-    print('Problem5: Let\'s check overlaps between train and valid data!')
-    for i, train_data in enumerate(train_dataset):
-        for j, valid_data in enumerate(valid_dataset):
-            #fig = plt.figure()
-            #plt.imshow( np.concatenate((train_data, valid_data), axis=1) )
-            #plt.show()
-            err = np.sum(np.fabs(train_data - valid_data))
-            print(str(err))
-            #if abs(err) < 1.0 :
-            #    fig = plt.figure()
-            #    plt.imshow( np.concatenate((train_data, valid_data), axis=1) )
-            #    #plt.show()
-            #    fig.savefig('match_%d_%d_%f.png' %(i, j, err) )
+    print('Problem 5: Let\'s check overlaps between train and valid data!')
+    # https://discussions.udacity.com/t/assignment-1-problem-5/45657/19, search stmax 82
+    test_dataset_clean, test_dataset_keep = checkOverlap(train_dataset, test_dataset)
+    valid_dataset_clean, valid_dataset_keep = checkOverlap(train_dataset, valid_dataset)
+    test_labels_clean = test_labels[test_dataset_keep]
+    valid_labels_clean = valid_labels[valid_dataset_keep]
+    test_size_clean = len(test_dataset_clean)
+    valid_size_clean = len(valid_dataset_clean)
+    print('Train data size %d, label size %d.' % (len(train_dataset), len(train_labels)))
+    print('Cleaned test data size %d, label size %d.' % (test_size_clean, len(test_labels_clean)))
+    print('Cleaned valid data size %d, label size %d.' % (valid_size_clean, len(valid_labels_clean)))
     
-    print()
-        
+    print('Problem 6: Train a simple model with LogisticRegression model from sklearn.linear_model') 
+    logreg = linear_model.LogisticRegression(C=1e5, verbose=1)
+    # we create an instance of Neighbours Classifier and fit the data.
+    num_samples, width, height = train_dataset.shape
+    flat_train_dataset = train_dataset.reshape((num_samples,width*height))[0:num_samples]
+    logreg.fit(flat_train_dataset, train_labels)
+    with open('trainedModel.pickle', 'wb') as f:
+        pickle.dump(logreg, f, pickle.HIGHEST_PROTOCOL)
+        f.close()
+    
+    print('Problem 6: Check prediction error of the trained model')
+    with open('trainedModel.pickle', 'rb') as f1:
+        clf = pickle.load(f1)
+        f1.close()
+        results = clf.predict(test_dataset_clean.reshape((test_size_clean,width*height)))
+        error = results - test_labels_clean
+        ratio = float(np.count_nonzero(error)) / float(len(test_labels_clean))
+        print(error)
+        print('Error number %d' % np.count_nonzero(error))
+        print('Error ratio %f' % ratio )
+        print('Assignment1 Done.')
 
-
+if __name__ == '__main__':
+    Assignment1()
